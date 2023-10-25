@@ -1,0 +1,326 @@
+---
+title: "COGS212 CourseProject - Exploratory Data Analysis (EDA)"
+output: html_document
+date: "2023-10-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This project explores interrelated research questions: 1) how has internal migration within the United States changed over time?  2) when people do migrate internally, where do they migrate from and 3) where do they migrate to? 
+
+Load libraries: 
+```{r}
+library(here)
+library(skimr)
+library(tidyr)
+library(stringr)
+library(dplyr)
+library(visdat)
+library(ggplot2)
+```
+
+Read in data: 
+```{r}
+df_raw <- read.csv(here("county_migration_data.csv")) 
+```
+
+Check the packaging:
+```{r}
+skim(df_raw)
+```
+
+Each column is a year of data. Therefore, I need to turn the data frame from a
+wide format to a long format.
+
+First, I need to rename the columns: 
+```{r}
+
+colnames(df_raw)
+colnames(df_raw) <- c("origin", "destination", as.character(1990:2010))
+colnames(df_raw)
+
+```
+
+I can now transform the dataset from a wide format to a long format: 
+```{r}
+df_long <- gather(df_raw, year, migrants, "1990":"2010", factor_key=TRUE)
+```
+
+As a quick check: 
+```{r}
+21 * 164403
+```
+Looks like the transformation worked! 
+(Note: 21 is the number of years and 164403 is the number of rows in the original dataset.)
+
+Look at the top of the dataset: 
+```{r}
+
+head(df_long)
+
+```
+
+Look at the bottom of the dataset: 
+```{r}
+
+tail(df_long)
+
+```
+
+This dataset only provides the FIPS codes for the counties. In this project, I 
+am going to focus on between state-level rather than county-level migration. The 
+first two numbers indicate the state; therefore, I can use these codes to 
+determine the origin state and destination state. More information on the FIPS
+codes can be found here: https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt. 
+To do this, I need to 1) add a zero at the beginning of the FIPS code for codes 
+with only four numbers, 2) separate the first two numbers from the remainder of
+the FIPS code, 3) create a key that matches FIPS code to state name, and 4) merge
+this key with my data frame. 
+
+Step 1: Add zeros
+```{r}
+df_long$origin_new <- ifelse(nchar(df_long$origin) < 5, paste("0", df_long$origin, sep = ""), df_long$origin)
+
+df_long$destination_new <- ifelse(nchar(df_long$destination) < 5, paste("0", df_long$destination, sep = ""), df_long$destination)
+```
+
+
+Step 2: Separate first two numbers
+```{r}
+
+df_long$origin_state_num <- str_extract(df_long$origin_new, "^\\d{2}")
+df_long$destination_state_num <- str_extract(df_long$destination_new, "^\\d{2}")
+
+```
+
+Check that these columns look correct - values should be between 01 and 56
+```{r}
+
+unique(df_long$origin_state_num)
+unique(df_long$destination_state_num)
+
+```
+
+The 99 values are missing values (it is unknown where people came from or went)! 
+I'm going to do a check check of how many observations are missing (as a percentage
+of the data frame): 
+```{r}
+
+(sum(df_long$origin_state_num == "99")/nrow(df_long)) * 100
+(sum(df_long$destination_state_num == "99")/nrow(df_long)) * 100
+
+```
+It is about 2% of each variable. I am going to remove those now, as to ensure 
+this does not create a problem when I try merging my key onto this data set:
+```{r}
+
+df_long_sub <- subset(df_long, origin_state_num != "99")
+sum(df_long_sub$origin_state_num == "99")
+
+df_long_sub <- subset(df_long_sub, destination_state_num != "99")
+sum(df_long_sub$destination_state_num == "99")
+
+```
+
+Step 3: Create key
+(Note: I am creating this key based on the documentation linked above.)
+```{r}
+FIPS <- c("01", "02", "04", "05", "06", "08", "09", as.character(10:13), 
+          as.character(15:42), as.character(44:51), as.character(53:56))
+Statename <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", 
+               "Connecticut", "Delaware", "District of Columbia", "Florida", 
+               "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", 
+               "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", 
+               "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", 
+               "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", 
+               "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", 
+               "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina",
+               "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", 
+               "Washington", "West Virginia", "Wisconsin", "Wyoming")
+
+key <- data.frame(FIPS, Statename)
+
+key
+```
+
+
+Step 4: Merge key with data
+First merge onto origin:
+```{r}
+
+colnames(key) <- c("origin_state_num", "origin_state_name")
+df_state <- plyr::join(df_long_sub, key, by = c("origin_state_num"))
+
+```
+
+Then merge onto destination: 
+```{r}
+
+colnames(key) <- c("destination_state_num", "destination_state_name")
+df_state <- plyr::join(df_state, key, by = c("destination_state_num"))
+
+```
+
+I am now going to subset to only the columns that I need for my analysis: 
+```{r}
+
+df_state <- subset(df_state, select = c(origin_state_num, origin_state_name, destination_state_num, destination_state_name, year, migrants))
+
+```
+
+Check my "n's"
+Year:
+```{r}
+
+df_state |> 
+    count(year)
+
+```
+
+Origin state: 
+```{r}
+
+df_state |> 
+    count(origin_state_name)
+
+```
+
+
+Destination state: 
+```{r}
+
+df_state |> 
+    count(destination_state_name)
+
+```
+
+We can see that not all states have the same number of observations. This is
+because the data still reflects the county-level data, NOT state-level. I need
+to summarize the data by year and state-dyad: 
+```{r}
+
+df_state_agg <- df_state |> 
+  group_by(origin_state_name, origin_state_num, destination_state_name, destination_state_num, year) |> 
+  summarize(migrants = sum(migrants, na.rm = TRUE))
+  
+```
+
+Let's look at the n's now: 
+```{r}
+
+df_state_agg |> 
+    count(origin_state_name)
+
+df_state_agg |> 
+    count(destination_state_name)
+
+```
+
+Looks good now!
+
+
+I am going to double check that I have no missingness in my data set: 
+```{r}
+
+vis_miss(df_state_agg)
+
+```
+
+I am going to create the following variables that will be useful to answering my research questions: 1) total migrants that year, 2) total migrants from a given 
+origin state, and 3) total migrants to a given destination state.
+```{r}
+df_state_agg <- df_state_agg |>
+  group_by(year) |>
+  mutate(migrants_year = sum(migrants, na.rm = TRUE))
+
+df_state_agg <- df_state_agg |>
+  group_by(origin_state_name) |>
+  mutate(migrants_origin = sum(migrants, na.rm = TRUE))
+
+df_state_agg <- df_state_agg |>
+  group_by(destination_state_name) |>
+  mutate(migrants_destination = sum(migrants, na.rm = TRUE))
+
+```
+
+Before I start plotting, I need to remove sceientific notation: 
+```{r}
+options(scipen=999)
+```
+
+I am now going to look at the general distribution of the migrant variable: 
+```{r}
+
+plot(table(df_state_agg$migrants))
+
+```
+As expected, we see that there are no migrants in most cases. 
+
+This plot looks at how the number of migrants has changed over time: 
+```{r}
+
+ggplot(df_state_agg, aes(x = year, y = migrants_year, group = 1)) +
+  geom_line()+
+  geom_point()
+
+```
+
+Creating tables of migrants by destination  and origin state: 
+```{r}
+
+destination <- subset(df_state_agg, select = c(destination_state_name, migrants_destination))
+destination <- destination %>% 
+  group_by(destination_state_name) %>%
+  summarize(migrants_destination = sum(migrants_destination, na.rm = TRUE))
+
+origin <- subset(df_state_agg, select = c(origin_state_name, migrants_origin))
+origin <- origin %>% 
+  group_by(origin_state_name) %>%
+  summarize(migrants_origin = sum(migrants_origin, na.rm = TRUE))
+  
+```
+
+
+This is a bar plot of all destination states...: 
+```{r}
+
+ggplot(df_state_agg, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "State Name (Destination)", y = "Number of Migrants")
+
+```
+
+...and of top 10 destination states: 
+```{r}
+
+destination_10 <- subset(df_state_agg, destination_state_name %in% c("California", "Texas", "New York", "Florida", "Illinois", "Pennsylvania", "Ohio", "Michigan", "New Jersey", "Georgia"))
+
+ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "State Name (Destination)", y = "Number of Migrants")
+
+```
+
+This is a bar plot of all origin states...:
+```{r}
+
+ggplot(df_state_agg, aes(x=reorder(origin_state_name, -migrants_origin), y=migrants_origin)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "State Name (Origin)", y = "Number of Migrants")
+
+```
+
+...and of top 10 origin states: 
+```{r}
+
+origin_10 <- subset(df_state_agg, origin_state_name %in% c("California", "Texas", "New York", "Florida", "Illinois", "Pennsylvania", "Ohio", "Michigan", "New Jersey", "Georgia"))
+
+ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "State Name (Destination)", y = "Number of Migrants")
+
+```
+
+The top 10 states that people migrate from are the same states that people migrate to. A follow-up question is whether this could change if I looked at migration per capita instead. Unfortunately, this data is unable to answer this question. We also see that migration has increased between 1990 and 2010. This data is sufficient to answer my three original research questions. 
