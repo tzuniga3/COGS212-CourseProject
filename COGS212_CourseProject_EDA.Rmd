@@ -18,7 +18,7 @@ library(tidyr)
 library(stringr)
 library(dplyr)
 library(visdat)
-library(ggplot2)
+library(ggplot2)#ES#very_clear
 ```
 
 Read in data: 
@@ -203,7 +203,7 @@ to summarize the data by year and state-dyad:
 
 df_state_agg <- df_state |> 
   group_by(origin_state_name, origin_state_num, destination_state_name, destination_state_num, year) |> 
-  summarize(migrants = sum(migrants, na.rm = TRUE))
+  summarize(migrants = sum(migrants, na.rm = TRUE))#Es#suggesting'groups'argument
   
 ```
 
@@ -319,8 +319,8 @@ origin_10 <- subset(df_state_agg, origin_state_name %in% c("California", "Texas"
 
 ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
   geom_bar(stat = "identity") + 
-  labs(x = "State Name (Destination)", y = "Number of Migrants")
+  labs(x = "State Name (Destination)", y = "Number of Migrants") #ES#easy_to_read!
 
 ```
 
-The top 10 states that people migrate from are the same states that people migrate to. A follow-up question is whether this could change if I looked at migration per capita instead. Unfortunately, this data is unable to answer this question. We also see that migration has increased between 1990 and 2010. This data is sufficient to answer my three original research questions. 
+The top 10 states that people migrate from are the same states that people migrate to. A follow-up question is whether this could change if I looked at migration per capita instead. Unfortunately, this data is unable to answer this question. We also see that migration has increased between 1990 and 2010. This data is sufficient to answer my three original research questions. #ES#code is very clean thank you!*
