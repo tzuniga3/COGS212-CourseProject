@@ -4,7 +4,21 @@ output: html_document
 date: "2023-10-24"
 ---
 
+<!-- DH general comments
+
+- Mostly good use of literate code style, following Peng & Matsui: introducing your project, walking us through your data, identifying notable features
+
+- Missing info on data provenance
+
+- Lots of issues with immutability violations, long lines
+
+- Project would benefit from organization: storing the documents you've already produced, along with the report and narrative
+
+-->
+
+
 ```{r setup, include=FALSE}
+## DH: I think this is only necessary if you're knitting to slides
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -21,6 +35,7 @@ library(visdat)
 library(ggplot2)
 ```
 
+<!-- DH: What is this dataset?  Where did it come from?  -->
 Read in data: 
 ```{r}
 df_raw <- read.csv(here("county_migration_data.csv")) 
@@ -38,6 +53,7 @@ First, I need to rename the columns:
 ```{r}
 
 colnames(df_raw)
+## DH: Violates immutability; append this to read.csv() with a pipe
 colnames(df_raw) <- c("origin", "destination", as.character(1990:2010))
 colnames(df_raw)
 
@@ -45,7 +61,12 @@ colnames(df_raw)
 
 I can now transform the dataset from a wide format to a long format: 
 ```{r}
-df_long <- gather(df_raw, year, migrants, "1990":"2010", factor_key=TRUE)
+## DH: long line; spacing around =
+df_long <- gather(df_raw, 
+                  year, 
+                  migrants, 
+                  "1990":"2010", 
+                  factor_key = TRUE)
 ```
 
 As a quick check: 
@@ -53,7 +74,7 @@ As a quick check:
 21 * 164403
 ```
 Looks like the transformation worked! 
-(Note: 21 is the number of years and 164403 is the number of rows in the original dataset.)
+(Note: 21 is the number of years and 164403 is the number of rows in the original dataset.) <!-- DH: Express the comparison directly: `identical(nrow(df_long), 21L * nrow(df_raw))`.  And you can make it an assertion by putting it in stopifnot(). -->
 
 Look at the top of the dataset: 
 ```{r}
@@ -69,6 +90,8 @@ tail(df_long)
 
 ```
 
+<!-- DH: Is fips code 99999 meaningful?  Or something like a NA? -->
+
 This dataset only provides the FIPS codes for the counties. In this project, I 
 am going to focus on between state-level rather than county-level migration. The 
 first two numbers indicate the state; therefore, I can use these codes to 
@@ -81,6 +104,8 @@ this key with my data frame.
 
 Step 1: Add zeros
 ```{r}
+## DH: long lines; violate immutability
+## DH: DRY: create a helper function and apply it to both `origin` and `destination` at the same time
 df_long$origin_new <- ifelse(nchar(df_long$origin) < 5, paste("0", df_long$origin, sep = ""), df_long$origin)
 
 df_long$destination_new <- ifelse(nchar(df_long$destination) < 5, paste("0", df_long$destination, sep = ""), df_long$destination)
@@ -89,7 +114,7 @@ df_long$destination_new <- ifelse(nchar(df_long$destination) < 5, paste("0", df_
 
 Step 2: Separate first two numbers
 ```{r}
-
+## DH: violate immutability
 df_long$origin_state_num <- str_extract(df_long$origin_new, "^\\d{2}")
 df_long$destination_state_num <- str_extract(df_long$destination_new, "^\\d{2}")
 
@@ -112,7 +137,7 @@ of the data frame):
 (sum(df_long$destination_state_num == "99")/nrow(df_long)) * 100
 
 ```
-It is about 2% of each variable. I am going to remove those now, as to ensure 
+It is about 2% of each variable. <!-- DH: Are these values exactly the same? --> I am going to remove those now, as to ensure 
 this does not create a problem when I try merging my key onto this data set:
 ```{r}
 
@@ -127,6 +152,7 @@ sum(df_long_sub$destination_state_num == "99")
 Step 3: Create key
 (Note: I am creating this key based on the documentation linked above.)
 ```{r}
+## DH: long lines
 FIPS <- c("01", "02", "04", "05", "06", "08", "09", as.character(10:13), 
           as.character(15:42), as.character(44:51), as.character(53:56))
 Statename <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", 
@@ -149,15 +175,16 @@ key
 Step 4: Merge key with data
 First merge onto origin:
 ```{r}
-
+## DH: violates immutability
 colnames(key) <- c("origin_state_num", "origin_state_name")
+## DH: don't introduce new dependencies in the middle of the script; note that you can do the same thing with dplyr::left_join()
 df_state <- plyr::join(df_long_sub, key, by = c("origin_state_num"))
 
 ```
 
 Then merge onto destination: 
 ```{r}
-
+## DH: violates immutability
 colnames(key) <- c("destination_state_num", "destination_state_name")
 df_state <- plyr::join(df_state, key, by = c("destination_state_num"))
 
@@ -165,7 +192,7 @@ df_state <- plyr::join(df_state, key, by = c("destination_state_num"))
 
 I am now going to subset to only the columns that I need for my analysis: 
 ```{r}
-
+## DH: long line; violates immutability
 df_state <- subset(df_state, select = c(origin_state_num, origin_state_name, destination_state_num, destination_state_name, year, migrants))
 
 ```
@@ -178,6 +205,8 @@ df_state |>
     count(year)
 
 ```
+
+<!-- DH: All correct? -->
 
 Origin state: 
 ```{r}
@@ -200,7 +229,7 @@ We can see that not all states have the same number of observations. This is
 because the data still reflects the county-level data, NOT state-level. I need
 to summarize the data by year and state-dyad: 
 ```{r}
-
+## DH: long line; are you intentionally leaving df_state_agg grouped? 
 df_state_agg <- df_state |> 
   group_by(origin_state_name, origin_state_num, destination_state_name, destination_state_num, year) |> 
   summarize(migrants = sum(migrants, na.rm = TRUE))
@@ -218,7 +247,7 @@ df_state_agg |>
 
 ```
 
-Looks good now!
+Looks good now! <!-- DH: Is the length what we'd expect? -->
 
 
 I am going to double check that I have no missingness in my data set: 
@@ -231,6 +260,7 @@ vis_miss(df_state_agg)
 I am going to create the following variables that will be useful to answering my research questions: 1) total migrants that year, 2) total migrants from a given 
 origin state, and 3) total migrants to a given destination state.
 ```{r}
+## DH: violates immutability; this could just be a single pipe
 df_state_agg <- df_state_agg |>
   group_by(year) |>
   mutate(migrants_year = sum(migrants, na.rm = TRUE))
@@ -256,7 +286,7 @@ I am now going to look at the general distribution of the migrant variable:
 plot(table(df_state_agg$migrants))
 
 ```
-As expected, we see that there are no migrants in most cases. 
+As expected, we see that there are no migrants in most cases. <!-- DH: Why is this expected? -->
 
 This plot looks at how the number of migrants has changed over time: 
 ```{r}
@@ -269,8 +299,9 @@ ggplot(df_state_agg, aes(x = year, y = migrants_year, group = 1)) +
 
 Creating tables of migrants by destination  and origin state: 
 ```{r}
-
+## DH: long line
 destination <- subset(df_state_agg, select = c(destination_state_name, migrants_destination))
+## DH: violates immutability; could've just started the pipe at the previous line
 destination <- destination %>% 
   group_by(destination_state_name) %>%
   summarize(migrants_destination = sum(migrants_destination, na.rm = TRUE))
@@ -285,16 +316,17 @@ origin <- origin %>%
 
 This is a bar plot of all destination states...: 
 ```{r}
-
-ggplot(df_state_agg, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
-  geom_bar(stat = "identity") + 
-  labs(x = "State Name (Destination)", y = "Number of Migrants")
+## DH: long line; spacing around =; flip the axes for readability
+ggplot(df_state_agg, aes(x=reorder(destination_state_name, migrants_destination), y=migrants_destination)) + 
+    geom_bar(stat = "identity") + 
+    coord_flip() +
+    labs(x = "State Name (Destination)", y = "Number of Migrants")
 
 ```
 
 ...and of top 10 destination states: 
 ```{r}
-
+## DH: long lines, spacing
 destination_10 <- subset(df_state_agg, destination_state_name %in% c("California", "Texas", "New York", "Florida", "Illinois", "Pennsylvania", "Ohio", "Michigan", "New Jersey", "Georgia"))
 
 ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
@@ -305,7 +337,7 @@ ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destinati
 
 This is a bar plot of all origin states...:
 ```{r}
-
+## DH: long lines; flip axes; spacing around =
 ggplot(df_state_agg, aes(x=reorder(origin_state_name, -migrants_origin), y=migrants_origin)) + 
   geom_bar(stat = "identity") + 
   labs(x = "State Name (Origin)", y = "Number of Migrants")
@@ -314,7 +346,7 @@ ggplot(df_state_agg, aes(x=reorder(origin_state_name, -migrants_origin), y=migra
 
 ...and of top 10 origin states: 
 ```{r}
-
+## DH: same issues
 origin_10 <- subset(df_state_agg, origin_state_name %in% c("California", "Texas", "New York", "Florida", "Illinois", "Pennsylvania", "Ohio", "Michigan", "New Jersey", "Georgia"))
 
 ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destination), y=migrants_destination)) + 
@@ -323,4 +355,4 @@ ggplot(destination_10, aes(x=reorder(destination_state_name, -migrants_destinati
 
 ```
 
-The top 10 states that people migrate from are the same states that people migrate to. A follow-up question is whether this could change if I looked at migration per capita instead. Unfortunately, this data is unable to answer this question. We also see that migration has increased between 1990 and 2010. This data is sufficient to answer my three original research questions. 
+The top 10 states that people migrate from are the same states that people migrate to. A follow-up question is whether this could change if I looked at migration per capita instead. Unfortunately, this data is unable to answer this question. We also see that migration has increased between 1990 and 2010. This data is sufficient to answer my three original research questions. <!-- DH: What are the answers? -->
